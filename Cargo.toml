@@ -10,7 +10,6 @@ authors = ["João Pedro Miranda C. Hluchan <berrytern@gmail.com>"]
 categories = [
     "database", 
     "external-ffi-bindings",
-    "data-access", 
     "network-programming"
 ]
 keywords = [
