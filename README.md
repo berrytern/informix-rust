@@ -16,7 +16,7 @@ InformixRust is a Rust library that provides a safe and efficient way to interac
 
     ```toml
     [dependencies]
-    informix_rust = "0.0.3"
+    informix_rust = "0.0.4"
     chrono = "0.4"
     ```
 - Set enviroment variables
@@ -32,11 +32,11 @@ InformixRust is a Rust library that provides a safe and efficient way to interac
 
 ```rs
 // File: examples/simple_query.rs
-use informix_rust::Connection;
+use informix_rust::{Connection, errors::Result};
 use chrono::NaiveDate;
 use std::env;
 
-fn main() -> Result<(), String> {
+fn main() -> Result<()> {
     println!("Starting the application");
 
     let conn = Connection::new()?;

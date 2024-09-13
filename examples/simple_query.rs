@@ -1,9 +1,8 @@
 // File: examples/simple_query.rs
-use informix_rust::Connection;
+use informix_rust::{Connection, errors::Result};
 use chrono::NaiveDate;
-use std::env;
 
-fn main() -> Result<(), String> {
+fn main() -> Result<()> {
     println!("Starting the application");
 
     let conn = Connection::new()?;
