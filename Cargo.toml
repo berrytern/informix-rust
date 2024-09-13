@@ -1,7 +1,28 @@
 [package]
 name = "informix_rust"
-version = "0.1.0"
+description = "InformixRust is a Rust library that provides a safe and efficient way to interact with Informix databases. It wraps the Informix CSDK (Client SDK) to offer a more Rust-friendly interface for database operations."
+version = "0.0.1"
 edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/berrytern/informix-rust"
+readme = "README.md"
+authors = ["João Pedro Miranda C. Hluchan <berrytern@gmail.com>"]
+categories = [
+    "database", 
+    "external-ffi-bindings",
+    "data-access", 
+    "network-programming"
+]
+keywords = [
+    "informix", 
+    "database", 
+    "dbms", 
+    "sql", 
+    "csdk", 
+    "ffi", 
+    "client-sdk", 
+    "databases"
+]
 
 [dependencies]
 libc = "0.2"
