@@ -9,7 +9,7 @@ fn main() -> Result<(), String> {
     let conn = Connection::new()?;
     println!("Connection object created");
 
-    let conn_string = &env::var("INFORMIXDB_CONN_PARAMS").expect("INFORMIXDB_CONN_PARAMS must be set");
+    let conn_string = "SERVER=myhom;DATABASE=mydb;HOST=domain.ip;SERVICE=1525;UID=jmkert;PWD=123456";
     conn.connect_with_string(conn_string)?;
     println!("Connected successfully");
 

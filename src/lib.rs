@@ -496,18 +496,3 @@ impl<'a> Cursor<'a> {
         Ok(results)
     }
 }
-
-// Example usage
-pub fn example() -> Result<(), String> {
-    let conn = Connection::new()?;
-    conn.connect("REDACTED_HOST", "REDACTED_USER", "REDACTED_PASSWORD")?;
-
-    let mut cursor = Cursor { stmt: Statement::new(std::ptr::null_mut() , ""), conn: &conn };
-    cursor.execute("SELECT * FROM your_table")?;
-
-    while let Some(row) = cursor.fetchone()? {
-        println!("{:?}", row);
-    }
-
-    Ok(())
-}
