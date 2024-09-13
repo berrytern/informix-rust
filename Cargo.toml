@@ -1,0 +1,11 @@
+[package]
+name = "informix_rust"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+libc = "0.2"
+chrono = "0.4"
+
+[build-dependencies]
+cc = "1.0"
