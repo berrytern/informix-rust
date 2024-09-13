@@ -16,7 +16,7 @@ InformixRust is a Rust library that provides a safe and efficient way to interac
 
     ```toml
     [dependencies]
-    informix_rust = "0.1.0"
+    informix_rust = "0.0.2"
     ```
 
 ## Usage
