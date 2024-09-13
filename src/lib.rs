@@ -4,7 +4,8 @@ use chrono::Datelike;
 use std::mem;
 use std::os::raw::{c_char, c_uchar, c_int, c_void, c_short, c_ushort, c_long, c_ulong};
 use std::ffi::{CStr, CString};
-
+pub mod errors;
+use errors::{InformixError, Result};
 
 
 #[link(name = "ifcli")]
@@ -95,7 +96,7 @@ pub struct Connection {
 
 
 impl Connection {
-    pub fn new() -> Result<Self, String> {
+    pub fn new() -> Result<Self> {
         let mut handle: *mut c_void = std::ptr::null_mut();
         let result = unsafe {
             SQLAllocHandle(SQL_HANDLE_ENV.into(), std::ptr::null_mut(), &mut handle)
@@ -108,17 +109,17 @@ impl Connection {
             if conn_result == 0 {
                 Ok(Connection { handle: conn_handle })
             } else {
-                Err(format!("Failed to allocate connection handle: {}", conn_result))
+                Err(InformixError::HandleAllocationError(conn_result))
             }
         } else {
-            Err(format!("Failed to allocate environment handle: {}", result))
+            Err(InformixError::HandleAllocationError(result))
         }
     }
 
-    pub fn connect_with_string(&self, conn_string: &str) -> Result<(), String> {
+    pub fn connect_with_string(&self, conn_string: &str) -> Result<()> {
         println!("Attempting to connect with string: {}", conn_string);
         
-        let conn_string = CString::new(conn_string).map_err(|e| format!("Invalid connection string: {}", e))?;
+        let conn_string = CString::new(conn_string).map_err(|e| InformixError::ConnectionError(format!("Invalid connection string: {}", e)))?;
         
         let mut out_conn_string = [0u8; 1024];
         let mut out_conn_string_len: c_short = 0;
@@ -140,32 +141,33 @@ impl Connection {
             Ok(())
         } else {
             let error_message = self.get_error_message();
-            Err(format!("Failed to connect: result = {}, {}", result, error_message))
+            Err(InformixError::ConnectionError(format!("Failed to connect: result = {}, {}", result, error_message)))
         }
     }
 
-    pub fn prepare(&self, sql: &str) -> Result<Statement, String> {
+    pub fn prepare(&self, sql: &str) -> Result<Statement> {
         let mut stmt_handle: *mut c_void = std::ptr::null_mut();
         let result = unsafe {
             SQLAllocHandle(SQL_HANDLE_STMT.into(), self.handle, &mut stmt_handle)
         };
         if result != 0 {
-            return Err(format!("Failed to allocate statement handle: {}", result));
+            return Err(InformixError::HandleAllocationError(result));
         }
 
-        let sql_cstring = CString::new(sql).map_err(|e| format!("Invalid SQL string: {}", e))?;
+        let sql_cstring = CString::new(sql)
+            .map_err(|e| InformixError::PrepareStatementError(format!("Invalid SQL string: {}", e)))?;
         let result = unsafe {
             SQLPrepare(stmt_handle, sql_cstring.as_ptr() as *const c_uchar, sql.len() as c_int)
         };
         if result != 0 {
             unsafe { SQLFreeHandle(SQL_HANDLE_STMT, stmt_handle) };
-            return Err(format!("Failed to prepare SQL: {}", result));
+            return Err(InformixError::PrepareStatementError(format!("Failed to prepare SQL: {}", result)));
         }
 
         Ok(Statement::new(stmt_handle , ""))
     }
 
-    pub fn connect(&self, server: &str, user: &str, password: &str) -> Result<(), String> {
+    pub fn connect(&self, server: &str, user: &str, password: &str) -> Result<()> {
         let server = CString::new(server).unwrap();
         let user = CString::new(user).unwrap();
         let password = CString::new(password).unwrap();
@@ -179,7 +181,7 @@ impl Connection {
             Ok(())
         } else {
             let error_message = self.get_error_message();
-            Err(format!("Failed to connect: {}", error_message))
+            Err(InformixError::ConnectionError(error_message))
         }
     }
 
@@ -204,13 +206,13 @@ impl Connection {
         format!("SQLSTATE = {}, Native Error = {}, Message = {}", state, native_error, message)
     }
 
-    pub fn execute(&self, sql: &str) -> Result<Statement, String> {
+    pub fn execute(&self, sql: &str) -> Result<Statement> {
         let mut stmt_handle: *mut c_void = std::ptr::null_mut();
         let result = unsafe {
             SQLAllocHandle(3, self.handle, &mut stmt_handle)
         };
         if result != 0 {
-            return Err(format!("Failed to allocate statement handle: {}", result));
+            return Err(InformixError::HandleAllocationError(result));
         }
 
         let sql = CString::new(sql).unwrap();
@@ -221,7 +223,7 @@ impl Connection {
             Ok(Statement::new(stmt_handle , ""))
         } else {
             unsafe { SQLFreeHandle(3, stmt_handle) };
-            Err(format!("Failed to execute SQL: {}", result))
+            Err(InformixError::SQLExecutionError(format!("Failed to execute SQL: {}", result)))
         }
     }
 }
@@ -248,25 +250,25 @@ impl Statement {
         }
     }
 
-    pub fn bind_parameter<T: ToSql>(&self, param_num: u16, value: &T) -> Result<(), String> {
+    pub fn bind_parameter<T: ToSql>(&self, param_num: u16, value: &T) -> Result<()> {
         value.bind_parameter(self.handle, param_num)
     }
 
-    pub fn execute(&self) -> Result<(), String> {
+    pub fn execute(&self) -> Result<()> {
         let result = unsafe { SQLExecute(self.handle) };
         if result != SQL_SUCCESS as c_short && result != SQL_SUCCESS_WITH_INFO as c_short {
-            Err(self.get_error_message())
+            Err(InformixError::SQLExecutionError(self.get_error_message()))
         } else {
             Ok(())
         }
     }
 
-    pub fn fetch(&self) -> Result<Option<Vec<String>>, String> {
+    pub fn fetch(&self) -> Result<Option<Vec<String>>> {
         let result = unsafe { SQLFetch(self.handle) };
         if result == SQL_NO_DATA.into() {
             return Ok(None);
         } else if result != SQL_SUCCESS.into() && result != SQL_SUCCESS_WITH_INFO.into() {
-            return Err(self.get_error_message());
+            return Err(InformixError::DataFetchError(self.get_error_message()));
         }
     
         let mut row = Vec::new();
@@ -298,7 +300,9 @@ impl Statement {
                 // If we get an error other than "Invalid descriptor index", return it
                 let error_message = self.get_error_message();
                 if !error_message.contains("Invalid descriptor index") {
-                    return Err(format!("GetData failed for column {}: {}", i, error_message));
+                    return Err(InformixError::DataFetchError(
+                        format!("GetData failed for column {}: {}", i, error_message)
+                    ));
                 }
                 // If we get "Invalid descriptor index", we've reached the end of the columns
                 break;
@@ -342,11 +346,11 @@ impl Drop for Statement {
 }
 
 pub trait ToSql {
-    fn bind_parameter(&self, stmt: *mut c_void, param_num: u16) -> Result<(), String>;
+    fn bind_parameter(&self, stmt: *mut c_void, param_num: u16) -> Result<()>;
 }
 
 impl ToSql for i32 {
-    fn bind_parameter(&self, stmt: *mut c_void, param_num: u16) -> Result<(), String> {
+    fn bind_parameter(&self, stmt: *mut c_void, param_num: u16) -> Result<()> {
         let result = unsafe {
             SQLBindParameter(
                 stmt,
@@ -364,13 +368,14 @@ impl ToSql for i32 {
         if result == SQL_SUCCESS as c_short || result == SQL_SUCCESS_WITH_INFO as c_short {
             Ok(())
         } else {
-            Err(format!("Failed to bind i32 parameter: {}", result))
+            Err(InformixError::ParameterBindingError(format!("Failed to bind i32 parameter: {}", result)))
         }
     }
 }
 impl ToSql for &str {
-    fn bind_parameter(&self, stmt: *mut c_void, param_num: u16) -> Result<(), String> {
-        let c_str = CString::new(*self).map_err(|e| format!("Failed to create CString: {}", e))?;
+    fn bind_parameter(&self, stmt: *mut c_void, param_num: u16) -> Result<()> {
+        let c_str = CString::new(*self)
+            .map_err(|e| InformixError::ParameterBindingError(format!("Failed to create CString: {}", e)))?;
         
         let result = unsafe {
             SQLBindParameter(
@@ -390,13 +395,14 @@ impl ToSql for &str {
         if result == SQL_SUCCESS || result == SQL_SUCCESS_WITH_INFO {
             Ok(())
         } else {
-            Err(format!("Failed to bind string parameter: SQLBindParameter returned {}", result))
+            Err(InformixError::ParameterBindingError(format!("Failed to bind string parameter: SQLBindParameter returned {}", result)))
         }
     }
 }
 impl ToSql for str {
-    fn bind_parameter(&self, stmt: *mut c_void, param_num: u16) -> Result<(), String> {
-        let c_str = CString::new(self).map_err(|e| format!("Failed to create CString: {}", e))?;
+    fn bind_parameter(&self, stmt: *mut c_void, param_num: u16) -> Result<()> {
+        let c_str = CString::new(self)
+            .map_err(|e| InformixError::ParameterBindingError(format!("Failed to create CString: {}", e)))?;
         let result = unsafe {
             SQLBindParameter(
                 stmt,
@@ -414,13 +420,13 @@ impl ToSql for str {
         if result == SQL_SUCCESS as c_short || result == SQL_SUCCESS_WITH_INFO as c_short {
             Ok(())
         } else {
-            Err(format!("Failed to bind string parameter: {}", result))
+            Err(InformixError::ParameterBindingError(format!("Failed to bind string parameter: {}", result)))
         }
     }
 }
 
 impl ToSql for String {
-    fn bind_parameter(&self, stmt: *mut c_void, param_num: u16) -> Result<(), String> {
+    fn bind_parameter(&self, stmt: *mut c_void, param_num: u16) -> Result<()> {
         self.as_str().bind_parameter(stmt, param_num)
     }
 }
@@ -433,7 +439,7 @@ struct SQL_DATE_STRUCT {
 }
 
 impl ToSql for NaiveDate {
-    fn bind_parameter(&self, stmt: *mut c_void, param_num: u16) -> Result<(), String> {
+    fn bind_parameter(&self, stmt: *mut c_void, param_num: u16) -> Result<()> {
         // Create a SQL_DATE_STRUCT
         let date_struct = SQL_DATE_STRUCT {
             year: self.year() as c_short,
@@ -459,7 +465,7 @@ impl ToSql for NaiveDate {
         if result == SQL_SUCCESS as c_short || result == SQL_SUCCESS_WITH_INFO as c_short {
             Ok(())
         } else {
-            Err(format!("Failed to bind date parameter: SQLBindParameter returned {}", result))
+            Err(InformixError::ParameterBindingError(format!("Failed to bind date parameter: SQLBindParameter returned {}", result)))
         }
     }
 }
@@ -471,12 +477,12 @@ pub struct Cursor<'a> {
 }
 
 impl<'a> Cursor<'a> {
-    pub fn execute(&mut self, sql: &str) -> Result<(), String> {
+    pub fn execute(&mut self, sql: &str) -> Result<()> {
         self.stmt = self.conn.execute(sql)?;
         Ok(())
     }
 
-    pub fn execute_with_params(&mut self, sql: &str, params: &[&dyn ToSql]) -> Result<(), String> {
+    pub fn execute_with_params(&mut self, sql: &str, params: &[&dyn ToSql]) -> Result<()> {
         self.stmt = self.conn.prepare(sql)?;
         for (i, param) in params.iter().enumerate() {
             param.bind_parameter(self.stmt.handle, (i + 1) as u16)?;
@@ -484,30 +490,15 @@ impl<'a> Cursor<'a> {
         self.stmt.execute()
     }
 
-    pub fn fetchone(&self) -> Result<Option<Vec<String>>, String> {
+    pub fn fetchone(&self) -> Result<Option<Vec<String>>> {
         self.stmt.fetch()
     }
 
-    pub fn fetchall(&self) -> Result<Vec<Vec<String>>, String> {
+    pub fn fetchall(&self) -> Result<Vec<Vec<String>>> {
         let mut results = Vec::new();
         while let Some(row) = self.stmt.fetch()? {
             results.push(row);
         }
         Ok(results)
     }
-}
-
-// Example usage
-pub fn example() -> Result<(), String> {
-    let conn = Connection::new()?;
-    conn.connect("REDACTED_HOST", "REDACTED_USER", "REDACTED_PASSWORD")?;
-
-    let mut cursor = Cursor { stmt: Statement::new(std::ptr::null_mut() , ""), conn: &conn };
-    cursor.execute("SELECT * FROM your_table")?;
-
-    while let Some(row) = cursor.fetchone()? {
-        println!("{:?}", row);
-    }
-
-    Ok(())
 }

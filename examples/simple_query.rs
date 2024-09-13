@@ -1,42 +1,30 @@
 // File: examples/simple_query.rs
-use informix_rust::Connection;
+use informix_rust::{Connection, errors::Result};
 use chrono::NaiveDate;
-use std::env;
 
-fn main() -> Result<(), String> {
+fn main() -> Result<()> {
     println!("Starting the application");
 
     let conn = Connection::new()?;
     println!("Connection object created");
 
-    let conn_string = &env::var("INFORMIXDB_CONN_PARAMS").expect("INFORMIXDB_CONN_PARAMS must be set");
+    // Connect to the database
+    let conn_string = "SERVER=myserver;DATABASE=mydb;HOST=localhost;SERVICE=9088;UID=username;PWD=password";
     conn.connect_with_string(conn_string)?;
     println!("Connected successfully");
 
-    let query = "SELECT catgtin.*, prod.*, pauta.*, pautaemb.*, unimedida.*, tpemb.*, categ.nocategproduto, pgtin.* 
-             FROM tbleg_gtinproduto prod, tbleg_catgtincat catgtin, tbfis_pautagtin pgtin, tbfis_pauta pauta, 
-             tbleg_categproduto categ, tbsic_unidmedida unimedida, 
-             OUTER (tbfis_pautaprodemb pautaemb, tbleg_tpembalagem tpemb) 
-             WHERE categ.sqcategproduto = catgtin.sqcategproduto 
-             AND catgtin.sqgtinproduto = prod.sqgtinproduto 
-             AND catgtin.sqgtinproduto = pgtin.sqgtinproduto 
-             AND pgtin.sqpauta = pauta.sqpauta 
-             AND pgtin.sqpauta = pautaemb.sqpauta 
-             AND pautaemb.sqtpembalagem = tpemb.sqtpembalagem 
-             AND pauta.squnidmedida = unimedida.squnidmedida 
-             AND pauta.stregistro = 1 AND pauta.stpauta = 1 
-             AND categ.sqcategproduto IN (?) 
-             AND (pauta.dtinicial <= ? AND (pauta.dtfinal IS NULL OR pauta.dtfinal >= ?))";
+    // Prepare a simple query
+    let query = "SELECT * FROM mytable WHERE id = ? and date_col >= ? and date_col <= ?";
 
     let stmt = conn.prepare(query)?;
     println!("Statement prepared successfully");
     
     // Prepare parameters
-    let category_id = 21i32;
+    let id: i32 = 1;
     let date = NaiveDate::from_ymd_opt(2024, 9, 7).unwrap();
 
     // Bind parameters
-    stmt.bind_parameter(1, &category_id)?;
+    stmt.bind_parameter(1, &id)?;
     stmt.bind_parameter(2, &date)?;
     stmt.bind_parameter(3, &date)?;
     println!("Parameters bound successfully");

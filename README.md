@@ -16,7 +16,15 @@ InformixRust is a Rust library that provides a safe and efficient way to interac
 
     ```toml
     [dependencies]
-    informix_rust = "0.1.0"
+    informix_rust = "0.0.4"
+    chrono = "0.4"
+    ```
+- Set enviroment variables
+    ```sh
+    export INFORMIXDIR=/opt/IBM/informix
+    export CSDK_HOME=$INFORMIXDIR
+    export LD_LIBRARY_PATH=$INFORMIXDIR/lib:$INFORMIXDIR/lib/esql:$INFORMIXDIR/lib/cli
+    export INFORMIXSQLHOSTS=$INFORMIXDIR/etc/sqlhosts
     ```
 
 ## Usage
@@ -24,11 +32,11 @@ InformixRust is a Rust library that provides a safe and efficient way to interac
 
 ```rs
 // File: examples/simple_query.rs
-use informix_rust::Connection;
+use informix_rust::{Connection, errors::Result};
 use chrono::NaiveDate;
 use std::env;
 
-fn main() -> Result<(), String> {
+fn main() -> Result<()> {
     println!("Starting the application");
 
     let conn = Connection::new()?;
@@ -56,5 +64,5 @@ fn main() -> Result<(), String> {
 }
 ```
 
-
+[IBM-CSDK-Client]: https://www.ibm.com/support/pages/informix-client-software-development-kit-client-sdk-and-informix-connect-system-requirements
 [IBM-CSDK-Download]: https://ak-delivery04-mul.dhe.ibm.com/sar/CMA/IMA/09ybj/1/clientsdk.4.10.FC15.linux-x86_64.tar
