@@ -1,5 +1,5 @@
 // File: examples/simple_query.rs
-use informix_rust::{Connection, Statement, ToSql};
+use informix_rust::Connection;
 use chrono::NaiveDate;
 use std::env;
 
