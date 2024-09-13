@@ -4,25 +4,25 @@ InformixRust is a Rust library that provides a safe and efficient way to interac
 ## Features
 
 - Safe Rust wrapper around Informix CSDK
-- Connection management with auto-reconnection support
+- Connection management with auto-reconnection support(todo)
 - Prepared statements with parameter binding
 - Efficient result set fetching
 - Support for various SQL data types including dates
-- Environment variable based configuration
 
 ## Installation
+- Informix
+    - Download by site [IBM-CSDK-Client] or by link [IBM-CSDK-Download]
+- Add this to your `Cargo.toml`:
 
-Add this to your `Cargo.toml`:
-
-```toml
-[dependencies]
-informix_rust = "0.1.0"
-```
+    ```toml
+    [dependencies]
+    informix_rust = "0.1.0"
+    ```
 
 ## Usage
 
 
-```
+```rs
 // File: examples/simple_query.rs
 use informix_rust::Connection;
 use chrono::NaiveDate;
@@ -55,3 +55,6 @@ fn main() -> Result<(), String> {
     Ok(())
 }
 ```
+
+
+[IBM-CSDK-Download]: https://ak-delivery04-mul.dhe.ibm.com/sar/CMA/IMA/09ybj/1/clientsdk.4.10.FC15.linux-x86_64.tar
