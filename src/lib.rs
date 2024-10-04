@@ -4,6 +4,8 @@ use chrono::Datelike;
 use std::mem;
 use std::os::raw::{c_char, c_uchar, c_int, c_void, c_short, c_ushort, c_long, c_ulong};
 use std::ffi::{CStr, CString};
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 pub mod errors;
 use errors::{InformixError, Result};
 
@@ -104,6 +106,7 @@ pub const SQL_NTS: c_long = -3;
 // Safe Rust wrappers
 pub struct Connection {
     handle: *mut c_void,
+    pub is_connected: AtomicBool,
 }
 
 
@@ -119,7 +122,7 @@ impl Connection {
                 SQLAllocHandle(SQL_HANDLE_DBC.into(), handle, &mut conn_handle)
             };
             if conn_result == 0 {
-                Ok(Connection { handle: conn_handle })
+                Ok(Connection { handle: conn_handle, is_connected: AtomicBool::new(false) })
             } else {
                 Err(InformixError::HandleAllocationError(conn_result))
             }
@@ -128,8 +131,14 @@ impl Connection {
         }
     }
 
+    pub fn is_connected(&self) -> bool {
+        self.is_connected.load(Ordering::SeqCst)
+    }
+
     pub fn connect_with_string(&self, conn_string: &str) -> Result<()> {
-        println!("Attempting to connect with string: {}", conn_string);
+        if self.is_connected() {
+            return Err(InformixError::ConnectionError("Already connected".to_string()));
+        }
         
         let conn_string = CString::new(conn_string).map_err(|e| InformixError::ConnectionError(format!("Invalid connection string: {}", e)))?;
         
@@ -150,6 +159,7 @@ impl Connection {
         
         if result == SQL_SUCCESS as c_short || result == SQL_SUCCESS_WITH_INFO as c_short {
             println!("Successfully connected to the database");
+            self.is_connected.store(true, Ordering::SeqCst);
             Ok(())
         } else {
             let error_message = self.get_error_message();
