@@ -9,6 +9,7 @@ pub enum InformixError {
     PrepareStatementError(String),
     ParameterBindingError(String),
     DataFetchError(String),
+    DescribeColumnsError(String),
 }
 
 impl fmt::Display for InformixError {
@@ -20,6 +21,7 @@ impl fmt::Display for InformixError {
             InformixError::PrepareStatementError(msg) => write!(f, "Failed to prepare statement: {}", msg),
             InformixError::ParameterBindingError(msg) => write!(f, "Failed to bind parameter: {}", msg),
             InformixError::DataFetchError(msg) => write!(f, "Failed to fetch data: {}", msg),
+            InformixError::DescribeColumnsError(msg) => write!(f, "Failed to describe columns: {}", msg),
         }
     }
 }

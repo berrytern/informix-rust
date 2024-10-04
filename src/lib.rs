@@ -41,6 +41,18 @@ extern "C" {
         DriverCompletion: c_ushort) -> c_short;
     fn SQLDisconnect(ConnectionHandle: *mut c_void) -> c_int;
     fn SQLFreeHandle(HandleType: c_short, Handle: *mut c_void) -> c_int;
+    fn SQLNumResultCols(StatementHandle: *mut c_void, ColumnCountPtr: *mut c_short) -> c_short;
+    fn SQLDescribeCol(
+        StatementHandle: *mut c_void,
+        ColumnNumber: c_ushort,
+        ColumnName: *mut c_char,
+        BufferLength: c_short,
+        NameLengthPtr: *mut c_short,
+        DataTypePtr: *mut c_short,
+        ColumnSizePtr: *mut c_ulong,
+        DecimalDigitsPtr: *mut c_short,
+        NullablePtr: *mut c_short,
+    ) -> c_short;
 }
 
 /*  FFI declarations
@@ -237,6 +249,15 @@ impl Drop for Connection {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct ColumnMetadata {
+    pub name: String,
+    pub data_type: i16,
+    pub column_size: u32,
+    pub decimal_digits: i16,
+    pub nullable: bool,
+}
+
 pub struct Statement {
     pub handle: *mut c_void,
     query: String,
@@ -309,6 +330,57 @@ impl Statement {
             }
         }
         Ok(Some(row))
+    }
+
+    pub fn describe_columns(&self) -> Result<Vec<ColumnMetadata>> {
+        let mut column_count: c_short = 0;
+        unsafe {
+            let result = SQLNumResultCols(self.handle, &mut column_count);
+            if result != SQL_SUCCESS as c_short && result != SQL_SUCCESS_WITH_INFO as c_short {
+                return Err(InformixError::DescribeColumnsError("Failed to get column count".to_string()));
+            }
+        }
+        
+        let mut columns = Vec::new();
+        
+        for i in 1..=column_count {
+            let mut name = [0 as c_char; 256];
+            let mut name_length: c_short = 0;
+            let mut data_type: c_short = 0;
+            let mut column_size: c_ulong = 0;
+            let mut decimal_digits: c_short = 0;
+            let mut nullable: c_short = 0;
+            
+            unsafe {
+                let result = SQLDescribeCol(
+                    self.handle,
+                    i as c_ushort,
+                    name.as_mut_ptr(),
+                    name.len() as c_short,
+                    &mut name_length,
+                    &mut data_type,
+                    &mut column_size,
+                    &mut decimal_digits,
+                    &mut nullable,
+                );
+                
+                if result != SQL_SUCCESS as c_short && result != SQL_SUCCESS_WITH_INFO as c_short {
+                    return Err(InformixError::DescribeColumnsError(format!("Failed to describe column {}", i)));
+                }
+                
+                let column_name = CStr::from_ptr(name.as_ptr()).to_string_lossy().into_owned();
+                
+                columns.push(ColumnMetadata {
+                    name: column_name,
+                    data_type: data_type,
+                    column_size: column_size as u32,
+                    decimal_digits: decimal_digits,
+                    nullable: nullable != 0,
+                });
+            }
+        }
+        
+        Ok(columns)
     }
 
     fn get_error_message(&self) -> String {
