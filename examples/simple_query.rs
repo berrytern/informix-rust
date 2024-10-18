@@ -1,6 +1,6 @@
 // File: examples/simple_query.rs
-use informix_rust::{Connection, errors::Result};
 use chrono::NaiveDate;
+use informix_rust::{errors::Result, Connection};
 
 fn main() -> Result<()> {
     println!("Starting the application");
@@ -9,7 +9,8 @@ fn main() -> Result<()> {
     println!("Connection object created");
 
     // Connect to the database
-    let conn_string = "SERVER=myserver;DATABASE=mydb;HOST=localhost;SERVICE=9088;UID=username;PWD=password";
+    let conn_string =
+        "SERVER=myserver;DATABASE=mydb;HOST=localhost;SERVICE=9088;UID=username;PWD=password";
     conn.connect_with_string(conn_string)?;
     println!("Connected successfully");
 
@@ -18,7 +19,7 @@ fn main() -> Result<()> {
 
     let stmt = conn.prepare(query)?;
     println!("Statement prepared successfully");
-    
+
     // Prepare parameters
     let id: i32 = 1;
     let date = NaiveDate::from_ymd_opt(2024, 9, 7).unwrap();
@@ -39,7 +40,8 @@ fn main() -> Result<()> {
     let mut row_count = 0;
     while let Some(row) = stmt.fetch()? {
         row_count += 1;
-        if row_count <= 5 {  // Print only the first 5 rows
+        if row_count <= 5 {
+            // Print only the first 5 rows
             println!("Row {}: {:?}", row_count, row);
         }
     }

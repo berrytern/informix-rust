@@ -1,6 +1,5 @@
 use std::os::raw::{c_short, c_ushort};
 
-
 #[derive(Debug, Clone)]
 pub struct ColumnMetadata {
     pub name: String,

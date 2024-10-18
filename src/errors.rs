@@ -1,5 +1,5 @@
-use std::fmt;
 use std::error::Error;
+use std::fmt;
 use tokio::task::JoinError;
 
 #[derive(Debug)]
@@ -22,17 +22,25 @@ pub enum InformixError {
 impl fmt::Display for InformixError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            InformixError::HandleAllocationError(code) => write!(f, "Failed to allocate handle: {}", code),
+            InformixError::HandleAllocationError(code) => {
+                write!(f, "Failed to allocate handle: {}", code)
+            }
             InformixError::ConnectionError(msg) => write!(f, "Failed to connect: {}", msg),
             InformixError::SQLExecutionError(msg) => write!(f, "SQL execution failed: {}", msg),
-            InformixError::PrepareStatementError(msg) => write!(f, "Failed to prepare statement: {}", msg),
-            InformixError::ParameterBindingError(msg) => write!(f, "Failed to bind parameter: {}", msg),
+            InformixError::PrepareStatementError(msg) => {
+                write!(f, "Failed to prepare statement: {}", msg)
+            }
+            InformixError::ParameterBindingError(msg) => {
+                write!(f, "Failed to bind parameter: {}", msg)
+            }
             InformixError::HandleFreeError(code) => write!(f, "Handle free error: {}", code),
             InformixError::DisconnectError(code) => write!(f, "Disconnect error: {}", code),
             InformixError::FetchError(msg) => write!(f, "Fetch error: {}", msg),
             InformixError::GetDataError(msg) => write!(f, "Get data error: {}", msg),
             InformixError::DataFetchError(msg) => write!(f, "Failed to fetch data: {}", msg),
-            InformixError::DescribeColumnsError(msg) => write!(f, "Failed to describe columns: {}", msg),
+            InformixError::DescribeColumnsError(msg) => {
+                write!(f, "Failed to describe columns: {}", msg)
+            }
             InformixError::JoinError(e) => write!(f, "Join error: {}", e),
             InformixError::NulError(e) => write!(f, "Null error: {}", e),
         }

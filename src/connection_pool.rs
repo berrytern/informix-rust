@@ -1,8 +1,4 @@
-use crate::{
-    connection::Connection,
-    errors::InformixError
-};
-
+use crate::{connection::Connection, errors::InformixError};
 
 pub struct ConnectionPool {
     connections: Vec<Connection>,
