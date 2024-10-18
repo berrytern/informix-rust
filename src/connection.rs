@@ -400,10 +400,13 @@ impl Statement {
                 if indicator == SQL_NULL_DATA {
                     row.push(String::from("NULL"));
                 } else {
-                    let s = unsafe { CStr::from_ptr(buffer.as_ptr() as *const c_char) }
-                        .to_string_lossy()
-                        .into_owned();
-                    row.push(s);
+                    row.push(unsafe { 
+                        CStr::from_ptr(buffer.as_ptr() as *const c_char)
+                            .to_bytes()
+                            .iter()
+                            .map(|&c| c as char)
+                            .collect::<String>()
+                    });
                 }
             } else {
                 // If we get an error other than "Invalid descriptor index", return it
