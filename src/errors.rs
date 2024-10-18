@@ -1,5 +1,6 @@
 use std::fmt;
 use std::error::Error;
+use tokio::task::JoinError;
 
 #[derive(Debug)]
 pub enum InformixError {
@@ -14,6 +15,7 @@ pub enum InformixError {
     GetDataError(String),
     DataFetchError(String),
     DescribeColumnsError(String),
+    JoinError(JoinError),
     NulError(std::ffi::NulError),
 }
 
@@ -31,6 +33,7 @@ impl fmt::Display for InformixError {
             InformixError::GetDataError(msg) => write!(f, "Get data error: {}", msg),
             InformixError::DataFetchError(msg) => write!(f, "Failed to fetch data: {}", msg),
             InformixError::DescribeColumnsError(msg) => write!(f, "Failed to describe columns: {}", msg),
+            InformixError::JoinError(e) => write!(f, "Join error: {}", e),
             InformixError::NulError(e) => write!(f, "Null error: {}", e),
         }
     }
@@ -41,6 +44,12 @@ impl Error for InformixError {}
 impl From<std::ffi::NulError> for InformixError {
     fn from(error: std::ffi::NulError) -> Self {
         InformixError::NulError(error)
+    }
+}
+
+impl From<JoinError> for InformixError {
+    fn from(error: JoinError) -> Self {
+        InformixError::JoinError(error)
     }
 }
 
