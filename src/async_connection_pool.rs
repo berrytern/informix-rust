@@ -4,7 +4,6 @@ use crate::{connection::Connection, domain::base_params::SqlParam, errors::Infor
 use std::collections::HashMap;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::Arc;
-type Job = Box<dyn FnOnce() + Send + 'static>;
 
 struct Worker {
     id: usize,
@@ -84,22 +83,21 @@ impl AsyncConnectionPool {
         } else {
             *index + 1
         };
-        if let Some(item) = workers.get(&(current as usize)) {
-            drop(index);
-            let mut guard: tokio::sync::MutexGuard<'_, (Sender<(String, Vec<SqlParam>)>, Receiver<Result<Option<Vec<Vec<String>>>, InformixError>>, Worker)> = item.lock().await;
-            match guard.0.send((query, parameters)).await {
-                Ok(_) =>{
-                    match guard.1.recv().await {
-                        Some(result) => result,
-                        None => Err(InformixError::ConnectionError("Channel closed".into())),
+        match workers.get(&(current as usize)) {
+            Some(item) => {
+                drop(index);
+                let mut guard: tokio::sync::MutexGuard<'_, (Sender<(String, Vec<SqlParam>)>, Receiver<Result<Option<Vec<Vec<String>>>, InformixError>>, Worker)> = item.lock().await;
+                match guard.0.send((query, parameters)).await {
+                    Ok(_) =>{
+                        match guard.1.recv().await {
+                            Some(result) => result,
+                            None => Err(InformixError::ConnectionError("Channel closed".into())),
+                        }
                     }
+                    Err(e) => Err(InformixError::ConnectionError(format!("Receiver dropped: {:?}", e).into()))
                 }
-                Err(e) => Err(InformixError::ConnectionError(format!("Receiver dropped: {:?}", e).into()))
-            }
-        } else {
-            return Err(InformixError::ConnectionError(
-                format!("Could not get worker: {current}").into(),
-            ));
+            }, 
+            None =>Err(InformixError::ConnectionError(format!("Could not get worker: {current}").into()))
         }
     }
 }
