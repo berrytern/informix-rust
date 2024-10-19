@@ -259,11 +259,11 @@ impl Connection {
     ) -> Result<Option<Vec<Vec<String>>>> {
         let statement = self.prepare(&query)?;
         for (index, param) in parameters.iter().enumerate() {
-            statement.bind_parameter(index as u16 + 1, &param).unwrap();
+            statement.bind_parameter(index as u16 + 1, &param)?;
         }
         statement.execute()?;
         let mut result: Vec<Vec<String>> = Vec::new();
-        while let Some(row) = statement.fetch().unwrap() {
+        while let Some(row) = statement.fetch()? {
             result.push(row);
         }
         if result.is_empty() {
@@ -314,6 +314,7 @@ impl Statement {
         if result == SQL_NO_DATA.into() {
             return Ok(None);
         } else if result != SQL_SUCCESS.into() && result != SQL_SUCCESS_WITH_INFO.into() {
+            println!("Fetch failed: {result}");
             return Err(InformixError::DataFetchError(self.get_error_message()));
         }
 
@@ -350,7 +351,7 @@ impl Statement {
             } else {
                 // If we get an error other than "Invalid descriptor index", return it
                 let error_message = self.get_error_message();
-                if !error_message.contains("Invalid descriptor index") {
+                if !error_message.contains("-11103") {
                     return Err(InformixError::DataFetchError(format!(
                         "GetData failed for column {}: {}",
                         i, error_message
