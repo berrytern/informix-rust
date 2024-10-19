@@ -5,29 +5,22 @@ use std::collections::HashMap;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::Arc;
 
-struct Worker {
+
+fn create_worker(
     id: usize,
-    thread: tokio::task::JoinHandle<()>,
-}
-
-impl Worker {
-    fn new(
-        id: usize,
-        sender: Sender<Result<Option<Vec<Vec<String>>>, InformixError>>,
-        mut receiver: Receiver<(String, Vec<SqlParam>)>,
-        connection: Connection,
-    ) -> Worker {
-        let thread = tokio::spawn(async move {
-            while let Some((query, parameters)) = receiver.recv().await {
-                if let Err(e) = sender.send(connection.query_with_parameters(query, parameters)).await {
-                    println!("Failed to send query result: {:?}", e);
-                }
+    sender: Sender<Result<Option<Vec<Vec<String>>>, InformixError>>,
+    mut receiver: Receiver<(String, Vec<SqlParam>)>,
+    connection: Connection,
+) {
+    tokio::spawn(async move {
+        while let Some((query, parameters)) = receiver.recv().await {
+            if let Err(e) = sender.send(connection.query_with_parameters(query, parameters)).await {
+                println!("Failed to send query result: {:?}", e);
             }
-            println!("Channel closed in thread {}", id);
-        });
+        }
+        println!("Channel closed in thread {}", id);
+    });
 
-        Worker { id, thread }
-    }
 }
 
 #[derive(Clone)]
@@ -39,7 +32,6 @@ pub struct AsyncConnectionPool {
                 Mutex<(
                     Sender<(String, Vec<SqlParam>)>,
                     Receiver<Result<Option<Vec<Vec<String>>>, InformixError>>,
-                    Worker,
                 )>
             >,
         >
@@ -54,13 +46,12 @@ impl AsyncConnectionPool {
             let (thread_sender, thread_receiver) = channel(1);
             let connection = Connection::new()?;
             connection.connect_with_string(conn_string)?;
-
+            create_worker(id, thread_sender, receiver, connection);
             workers.insert(
                 id,
                 Arc::new(Mutex::new((
                     sender,
                     thread_receiver,
-                    Worker::new(id, thread_sender, receiver, connection),
                 ))),
             );
         }
@@ -86,7 +77,7 @@ impl AsyncConnectionPool {
         match workers.get(&(current as usize)) {
             Some(item) => {
                 drop(index);
-                let mut guard: tokio::sync::MutexGuard<'_, (Sender<(String, Vec<SqlParam>)>, Receiver<Result<Option<Vec<Vec<String>>>, InformixError>>, Worker)> = item.lock().await;
+                let mut guard: tokio::sync::MutexGuard<'_, (Sender<(String, Vec<SqlParam>)>, Receiver<Result<Option<Vec<Vec<String>>>, InformixError>>)> = item.lock().await;
                 match guard.0.send((query, parameters)).await {
                     Ok(_) =>{
                         match guard.1.recv().await {
