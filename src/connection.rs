@@ -267,9 +267,9 @@ impl Connection {
             result.push(row);
         }
         if result.is_empty() {
-            return Ok(None);
+            Ok(None)
         } else {
-            return Ok(Some(result));
+            Ok(Some(result))
         }
     }
 }
@@ -409,9 +409,9 @@ impl Statement {
 
                 columns.push(ColumnMetadata {
                     name: column_name,
-                    data_type: data_type,
+                    data_type,
                     column_size: column_size as u32,
-                    decimal_digits: decimal_digits,
+                    decimal_digits,
                     nullable: nullable != 0,
                 });
             }
