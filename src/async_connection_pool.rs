@@ -2,29 +2,29 @@ use tokio::sync::Mutex;
 
 use crate::{connection::Connection, domain::base_params::SqlParam, errors::InformixError};
 use std::collections::HashMap;
-use std::fmt::format;
-use std::sync::atomic::AtomicBool;
-use std::sync::mpsc::{channel, Receiver, Sender};
+use tokio::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::Arc;
-use std::thread;
 type Job = Box<dyn FnOnce() + Send + 'static>;
 
 struct Worker {
     id: usize,
-    thread: thread::JoinHandle<()>,
+    thread: tokio::task::JoinHandle<()>,
 }
 
 impl Worker {
     fn new(
         id: usize,
         sender: Sender<Result<Option<Vec<Vec<String>>>, InformixError>>,
-        receiver: Receiver<(String, Vec<SqlParam>)>,
+        mut receiver: Receiver<(String, Vec<SqlParam>)>,
         connection: Connection,
     ) -> Worker {
-        let thread = thread::spawn(move || loop {
-            let (query, parameters) = receiver.recv().unwrap();
-            println!("Worker {} got a job; executing.", id);
-            sender.send(connection.query_with_parameters(query, parameters));
+        let thread = tokio::spawn(async move {
+            while let Some((query, parameters)) = receiver.recv().await {
+                if let Err(e) = sender.send(connection.query_with_parameters(query, parameters)).await {
+                    println!("Failed to send query result: {:?}", e);
+                }
+            }
+            println!("Channel closed in thread {}", id);
         });
 
         Worker { id, thread }
@@ -34,16 +34,16 @@ impl Worker {
 #[derive(Clone)]
 pub struct AsyncConnectionPool {
     workers: Arc<
-        Mutex<
-            HashMap<
-                usize,
-                (
+        HashMap<
+            usize,
+            Arc<
+                Mutex<(
                     Sender<(String, Vec<SqlParam>)>,
                     Receiver<Result<Option<Vec<Vec<String>>>, InformixError>>,
                     Worker,
-                ),
+                )>
             >,
-        >,
+        >
     >,
     index: Arc<Mutex<u16>>,
 }
@@ -51,22 +51,22 @@ impl AsyncConnectionPool {
     pub fn new(conn_string: &str, size: usize) -> Result<Self, InformixError> {
         let mut workers = HashMap::with_capacity(size);
         for id in 0..size {
-            let (sender, receiver) = channel();
-            let (thread_sender, thread_receiver) = channel();
+            let (sender, receiver) = channel(1);
+            let (thread_sender, thread_receiver) = channel(1);
             let connection = Connection::new()?;
             connection.connect_with_string(conn_string)?;
 
             workers.insert(
                 id,
-                (
+                Arc::new(Mutex::new((
                     sender,
                     thread_receiver,
                     Worker::new(id, thread_sender, receiver, connection),
-                ),
+                ))),
             );
         }
         Ok(AsyncConnectionPool {
-            workers: Arc::new(Mutex::new(workers)),
+            workers: Arc::new(workers),
             index: Arc::new(Mutex::new(0)),
         })
     }
@@ -78,22 +78,24 @@ impl AsyncConnectionPool {
     ) -> Result<Option<Vec<Vec<String>>>, InformixError> {
         let workers = Arc::clone(&self.workers);
         let mut index = self.index.lock().await;
-        let guard = workers.lock().await;
         let current = *index;
-        *index = if (*index + 1) as usize >= guard.len() {
+        *index = if (*index + 1) as usize >= workers.len() {
             0
         } else {
             *index + 1
         };
-        drop(index);
-        let worker = guard.get(&(current as usize));
-        if let Some((sender, receiver, _)) = worker {
-            if let Ok(_) = sender.send((query, parameters)) {
-                if let Ok(promise) = receiver.recv() {
-                    return promise;
-                };
+        if let Some(item) = workers.get(&(current as usize)) {
+            drop(index);
+            let mut guard: tokio::sync::MutexGuard<'_, (Sender<(String, Vec<SqlParam>)>, Receiver<Result<Option<Vec<Vec<String>>>, InformixError>>, Worker)> = item.lock().await;
+            match guard.0.send((query, parameters)).await {
+                Ok(_) =>{
+                    match guard.1.recv().await {
+                        Some(result) => result,
+                        None => Err(InformixError::ConnectionError("Channel closed".into())),
+                    }
+                }
+                Err(e) => Err(InformixError::ConnectionError(format!("Receiver dropped: {:?}", e).into()))
             }
-            return Err(InformixError::ConnectionError("Error in query".into()));
         } else {
             return Err(InformixError::ConnectionError(
                 format!("Could not get worker: {current}").into(),
