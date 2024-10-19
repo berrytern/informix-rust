@@ -1,29 +1,11 @@
 use crate::{
-    connection::{Connection, SendPtr, ToSql},
+    connection::Connection,
+    domain::base_params::SqlParam,
     errors,
 };
-use chrono::NaiveDate;
 use errors::InformixError;
-use std::borrow::Cow;
-use std::os::raw::c_void;
 use std::sync::{Arc, Mutex};
 
-#[derive(Debug, Clone)]
-pub enum SqlParam {
-    Integer(i32),
-    Str(Cow<'static, str>),
-    Date(NaiveDate),
-}
-
-impl ToSql for &SqlParam {
-    fn bind_parameter(&self, stmt: SendPtr<c_void>, param_num: u16) -> Result<(), InformixError> {
-        match self {
-            SqlParam::Integer(value) => value.bind_parameter(stmt, param_num),
-            SqlParam::Str(value) => value.bind_parameter(stmt, param_num),
-            SqlParam::Date(value) => value.bind_parameter(stmt, param_num),
-        }
-    }
-}
 
 pub struct AsyncConnection {
     connection: Arc<Mutex<Connection>>,
