@@ -1,4 +1,5 @@
 pub mod async_connection;
+pub mod async_connection_pool;
 pub mod connection;
 pub mod connection_pool;
 pub mod domain;

@@ -1,100 +1,22 @@
 use crate::{
-    domain::{ColumnMetadata, SQL_DATE_STRUCT},
+    domain::{
+        base_params::{ColumnMetadata, SqlParam, ToSql},
+        c_binds::{
+            SQLAllocHandle, SQLBindParameter, SQLConnect, SQLDescribeCol, SQLDisconnect,
+            SQLDriverConnect, SQLExecDirect, SQLExecute, SQLFetch, SQLFreeHandle, SQLGetData,
+            SQLGetDiagRec, SQLNumResultCols, SQLPrepare, SQL_HANDLE_DBC,
+            SQL_HANDLE_ENV, SQL_HANDLE_STMT,
+        }
+    },
     errors::{InformixError, Result},
 };
-use chrono::Datelike;
-use chrono::NaiveDate;
 use std::ffi::{CStr, CString};
 use std::marker::PhantomData;
-use std::mem;
 use std::ops::Deref;
 use std::os::raw::{c_char, c_int, c_long, c_short, c_uchar, c_ulong, c_ushort, c_void};
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 
-#[link(name = "ifcli")]
-extern "C" {
-    fn SQLAllocHandle(
-        HandleType: c_int,
-        InputHandle: *mut c_void,
-        OutputHandle: *mut *mut c_void,
-    ) -> c_int;
-    fn SQLConnect(
-        ConnectionHandle: *mut c_void,
-        ServerName: *const c_char,
-        NameLength1: c_int,
-        UserName: *const c_char,
-        NameLength2: c_int,
-        Authentication: *const c_char,
-        NameLength3: c_int,
-    ) -> c_int;
-    fn SQLPrepare(
-        StatementHandle: *mut c_void,
-        StatementText: *const c_uchar,
-        TextLength: c_int,
-    ) -> c_short;
-    fn SQLBindParameter(
-        StatementHandle: *mut c_void,
-        ParameterNumber: c_ushort,
-        InputOutputType: c_short,
-        ValueType: c_short,
-        ParameterType: c_short,
-        ColumnSize: c_ulong,
-        DecimalDigits: c_short,
-        ParameterValuePtr: *const c_void,
-        BufferLength: c_long,
-        StrLen_or_IndPtr: *const c_long,
-    ) -> c_short;
-    fn SQLExecute(StatementHandle: *mut c_void) -> c_short;
-    fn SQLExecDirect(
-        StatementHandle: *mut c_void,
-        StatementText: *const c_char,
-        TextLength: c_int,
-    ) -> c_int;
-    fn SQLFetch(StatementHandle: *mut c_void) -> c_int;
-    fn SQLGetData(
-        StatementHandle: *mut c_void,
-        ColumnNumber: c_ushort,
-        TargetType: c_short,
-        TargetValue: *mut c_void,
-        BufferLength: c_long,
-        StrLen_or_Ind: *mut c_long,
-    ) -> c_short;
-    fn SQLGetDiagRec(
-        HandleType: c_short,
-        Handle: *mut c_void,
-        RecNumber: c_short,
-        SQLState: *mut c_char,
-        NativeErrorPtr: *mut c_int,
-        MessageText: *mut c_char,
-        BufferLength: c_short,
-        TextLengthPtr: *mut c_short,
-    ) -> c_short;
-    fn SQLDriverConnect(
-        ConnectionHandle: *mut c_void,
-        WindowHandle: *mut c_void,
-        InConnectionString: *const c_char,
-        StringLength1: c_short,
-        OutConnectionString: *mut c_char,
-        BufferLength: c_short,
-        StringLength2Ptr: *mut c_short,
-        DriverCompletion: c_ushort,
-    ) -> c_short;
-    fn SQLDisconnect(ConnectionHandle: *mut c_void) -> c_int;
-    fn SQLFreeHandle(HandleType: c_short, Handle: *mut c_void) -> c_int;
-    fn SQLNumResultCols(StatementHandle: *mut c_void, ColumnCountPtr: *mut c_short) -> c_short;
-    fn SQLDescribeCol(
-        StatementHandle: *mut c_void,
-        ColumnNumber: c_ushort,
-        ColumnName: *mut c_char,
-        BufferLength: c_short,
-        NameLengthPtr: *mut c_short,
-        DataTypePtr: *mut c_short,
-        ColumnSizePtr: *mut c_ulong,
-        DecimalDigitsPtr: *mut c_short,
-        NullablePtr: *mut c_short,
-    ) -> c_short;
-}
 
 #[derive(Debug)]
 pub struct SendPtr<T>(*mut T, PhantomData<T>);
@@ -147,13 +69,9 @@ pub const SQL_SMALLINT: c_short = 5;
 pub const SQL_NULL_DATA: c_long = -1;
 
 // SQL handle types
-pub const SQL_HANDLE_ENV: c_short = 1;
-pub const SQL_HANDLE_DBC: c_short = 2;
-pub const SQL_HANDLE_STMT: c_short = 3;
 
 pub const SQL_DRIVER_NOPROMPT: c_ushort = 0;
 // Other SQL constants
-pub const SQL_PARAM_INPUT: c_short = 1;
 pub const SQL_NTS: c_long = -3;
 
 // Safe Rust wrappers
@@ -220,6 +138,9 @@ impl Connection {
             Ok(())
         } else {
             let error_message = self.get_error_message();
+            println!("Failed to connect: result = {}, {}",
+                result, error_message
+            );
             Err(InformixError::ConnectionError(format!(
                 "Failed to connect: result = {}, {}",
                 result, error_message
@@ -333,6 +254,27 @@ impl Connection {
             )))
         }
     }
+
+    pub fn query_with_parameters(
+        &self,
+        query: String,
+        parameters: Vec<SqlParam>,
+    ) -> Result<Option<Vec<Vec<String>>>> {
+        let statement = self.prepare(&query)?;
+        for (index, param) in parameters.iter().enumerate() {
+            statement.bind_parameter(index as u16 + 1, &param).unwrap();
+        }
+        statement.execute()?;
+        let mut result: Vec<Vec<String>> = Vec::new();
+        while let Some(row) = statement.fetch().unwrap() {
+            result.push(row);
+        }
+        if result.is_empty() {
+            return Ok(None);
+        } else {
+            return Ok(Some(result));
+        }
+    }
 }
 
 impl Drop for Connection {
@@ -402,10 +344,10 @@ impl Statement {
                 } else {
                     row.push(unsafe { 
                         CStr::from_ptr(buffer.as_ptr() as *const c_char)
-                            .to_bytes()
-                            .iter()
-                            .map(|&c| c as char)
-                            .collect::<String>()
+                        .to_bytes()
+                        .iter()
+                        .map(|&c| c as char)
+                        .collect::<String>()
                     });
                 }
             } else {
@@ -518,137 +460,6 @@ impl Drop for Statement {
     }
 }
 
-pub trait ToSql {
-    fn bind_parameter(&self, stmt: SendPtr<c_void>, param_num: u16) -> Result<()>;
-}
-
-impl ToSql for i32 {
-    fn bind_parameter(&self, stmt: SendPtr<c_void>, param_num: u16) -> Result<()> {
-        let result = unsafe {
-            SQLBindParameter(
-                stmt.as_ptr(),
-                param_num,
-                SQL_PARAM_INPUT,
-                SQL_C_LONG,
-                SQL_INTEGER,
-                0,
-                0,
-                self as *const i32 as *const c_void,
-                0,
-                std::ptr::null(),
-            )
-        };
-        if result == SQL_SUCCESS as c_short || result == SQL_SUCCESS_WITH_INFO as c_short {
-            Ok(())
-        } else {
-            Err(InformixError::ParameterBindingError(format!(
-                "Failed to bind i32 parameter: {}",
-                result
-            )))
-        }
-    }
-}
-impl ToSql for &str {
-    fn bind_parameter(&self, stmt: SendPtr<c_void>, param_num: u16) -> Result<()> {
-        let c_str = CString::new(*self).map_err(|e| {
-            InformixError::ParameterBindingError(format!("Failed to create CString: {}", e))
-        })?;
-
-        let result = unsafe {
-            SQLBindParameter(
-                stmt.as_ptr(),
-                param_num as c_ushort,
-                SQL_PARAM_INPUT,
-                SQL_C_CHAR,
-                SQL_VARCHAR,
-                self.len() as c_ulong,
-                0, // decimal digits
-                c_str.as_ptr() as *const c_void,
-                self.len() as c_long,
-                &(self.len() as c_long) as *const c_long,
-            )
-        };
-
-        if result == SQL_SUCCESS || result == SQL_SUCCESS_WITH_INFO {
-            Ok(())
-        } else {
-            Err(InformixError::ParameterBindingError(format!(
-                "Failed to bind string parameter: SQLBindParameter returned {}",
-                result
-            )))
-        }
-    }
-}
-impl ToSql for str {
-    fn bind_parameter(&self, stmt: SendPtr<c_void>, param_num: u16) -> Result<()> {
-        let c_str = CString::new(self).map_err(|e| {
-            InformixError::ParameterBindingError(format!("Failed to create CString: {}", e))
-        })?;
-        let result = unsafe {
-            SQLBindParameter(
-                stmt.as_ptr(),
-                param_num,
-                SQL_PARAM_INPUT,
-                SQL_C_CHAR,
-                SQL_VARCHAR,
-                self.len() as c_ulong,
-                0,
-                c_str.as_ptr() as *const c_void,
-                0,
-                &(self.len() as c_long) as *const c_long,
-            )
-        };
-        if result == SQL_SUCCESS as c_short || result == SQL_SUCCESS_WITH_INFO as c_short {
-            Ok(())
-        } else {
-            Err(InformixError::ParameterBindingError(format!(
-                "Failed to bind string parameter: {}",
-                result
-            )))
-        }
-    }
-}
-
-impl ToSql for String {
-    fn bind_parameter(&self, stmt: SendPtr<c_void>, param_num: u16) -> Result<()> {
-        self.as_str().bind_parameter(stmt, param_num)
-    }
-}
-
-impl ToSql for NaiveDate {
-    fn bind_parameter(&self, stmt: SendPtr<c_void>, param_num: u16) -> Result<()> {
-        // Create a SQL_DATE_STRUCT
-        let date_struct = SQL_DATE_STRUCT {
-            year: self.year() as c_short,
-            month: self.month() as c_ushort,
-            day: self.day() as c_ushort,
-        };
-
-        let result = unsafe {
-            SQLBindParameter(
-                stmt.as_ptr(),
-                param_num,
-                SQL_PARAM_INPUT,
-                SQL_TYPE_DATE,
-                SQL_TYPE_DATE,
-                10, // size of YYYY-MM-DD
-                0,  // decimal digits
-                &date_struct as *const SQL_DATE_STRUCT as *const c_void,
-                mem::size_of::<SQL_DATE_STRUCT>() as c_long,
-                std::ptr::null(),
-            )
-        };
-
-        if result == SQL_SUCCESS as c_short || result == SQL_SUCCESS_WITH_INFO as c_short {
-            Ok(())
-        } else {
-            Err(InformixError::ParameterBindingError(format!(
-                "Failed to bind date parameter: SQLBindParameter returned {}",
-                result
-            )))
-        }
-    }
-}
 
 // Higher-level abstractions
 pub struct Cursor<'a> {
