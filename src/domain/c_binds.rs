@@ -1,6 +1,4 @@
-
 use std::os::raw::{c_char, c_int, c_long, c_short, c_uchar, c_ulong, c_ushort, c_void};
-
 
 #[link(name = "ifcli")]
 extern "C" {
@@ -85,7 +83,6 @@ extern "C" {
         NullablePtr: *mut c_short,
     ) -> c_short;
 }
-
 
 pub const SQL_PARAM_INPUT: c_short = 1;
 

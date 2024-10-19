@@ -1,26 +1,16 @@
-use std::{
-    ffi::CString,
-    os::raw::{c_char, c_int, c_long, c_short, c_uchar, c_ulong, c_ushort, c_void}
+use super::c_binds::{
+    SQLBindParameter, SQL_C_CHAR, SQL_C_LONG, SQL_INTEGER, SQL_PARAM_INPUT, SQL_SUCCESS,
+    SQL_SUCCESS_WITH_INFO, SQL_TYPE_DATE, SQL_VARCHAR,
 };
-use crate::{
-    connection::SendPtr,
-    errors,
-};
+use crate::{connection::SendPtr, errors};
 use chrono::Datelike;
 use chrono::NaiveDate;
 use errors::InformixError;
 use std::borrow::Cow;
 use std::mem;
-use super::c_binds::{
-    SQLBindParameter,
-    SQL_PARAM_INPUT,
-    SQL_C_LONG,
-    SQL_INTEGER,
-    SQL_C_CHAR,
-    SQL_VARCHAR,
-    SQL_TYPE_DATE,
-    SQL_SUCCESS,
-    SQL_SUCCESS_WITH_INFO,
+use std::{
+    ffi::CString,
+    os::raw::{c_char, c_int, c_long, c_short, c_uchar, c_ulong, c_ushort, c_void},
 };
 
 #[derive(Debug, Clone)]
@@ -38,7 +28,6 @@ pub struct SQL_DATE_STRUCT {
     pub month: c_ushort,
     pub day: c_ushort,
 }
-
 
 #[derive(Debug, Clone)]
 pub enum SqlParam {

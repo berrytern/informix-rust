@@ -1,11 +1,6 @@
-use crate::{
-    connection::Connection,
-    domain::base_params::SqlParam,
-    errors,
-};
+use crate::{connection::Connection, domain::base_params::SqlParam, errors};
 use errors::InformixError;
 use std::sync::{Arc, Mutex};
-
 
 pub struct AsyncConnection {
     connection: Arc<Mutex<Connection>>,

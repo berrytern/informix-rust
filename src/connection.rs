@@ -4,9 +4,9 @@ use crate::{
         c_binds::{
             SQLAllocHandle, SQLBindParameter, SQLConnect, SQLDescribeCol, SQLDisconnect,
             SQLDriverConnect, SQLExecDirect, SQLExecute, SQLFetch, SQLFreeHandle, SQLGetData,
-            SQLGetDiagRec, SQLNumResultCols, SQLPrepare, SQL_HANDLE_DBC,
-            SQL_HANDLE_ENV, SQL_HANDLE_STMT,
-        }
+            SQLGetDiagRec, SQLNumResultCols, SQLPrepare, SQL_HANDLE_DBC, SQL_HANDLE_ENV,
+            SQL_HANDLE_STMT,
+        },
     },
     errors::{InformixError, Result},
 };
@@ -16,7 +16,6 @@ use std::ops::Deref;
 use std::os::raw::{c_char, c_int, c_long, c_short, c_uchar, c_ulong, c_ushort, c_void};
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
-
 
 #[derive(Debug)]
 pub struct SendPtr<T>(*mut T, PhantomData<T>);
@@ -138,9 +137,7 @@ impl Connection {
             Ok(())
         } else {
             let error_message = self.get_error_message();
-            println!("Failed to connect: result = {}, {}",
-                result, error_message
-            );
+            println!("Failed to connect: result = {}, {}", result, error_message);
             Err(InformixError::ConnectionError(format!(
                 "Failed to connect: result = {}, {}",
                 result, error_message
@@ -342,12 +339,12 @@ impl Statement {
                 if indicator == SQL_NULL_DATA {
                     row.push(String::from("NULL"));
                 } else {
-                    row.push(unsafe { 
+                    row.push(unsafe {
                         CStr::from_ptr(buffer.as_ptr() as *const c_char)
-                        .to_bytes()
-                        .iter()
-                        .map(|&c| c as char)
-                        .collect::<String>()
+                            .to_bytes()
+                            .iter()
+                            .map(|&c| c as char)
+                            .collect::<String>()
                     });
                 }
             } else {
@@ -459,7 +456,6 @@ impl Drop for Statement {
         }
     }
 }
-
 
 // Higher-level abstractions
 pub struct Cursor<'a> {
