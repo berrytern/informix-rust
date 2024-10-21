@@ -257,16 +257,12 @@ impl Connection {
         query: String,
         parameters: Vec<SqlParam>,
     ) -> Result<Option<Vec<Vec<String>>>> {
-        println!("Executing query: {}", query);
-        println!("Parameters: {:?}", parameters);
         let statement = self.prepare(&query)?;
 
         for (index, param) in parameters.iter().enumerate() {
             match param {
                 SqlParam::Str(s) => {
-                    println!("Binding string parameter {}: {}", index + 1, s);
                     if let Err(e) = statement.bind_parameter(index as u16 + 1, s) {
-                        println!("Error binding parameter: {:?}", e);
                         return Err(e);
                     }
                 },
@@ -277,14 +273,11 @@ impl Connection {
             }
             
         }
-        println!("Executing statement");
         statement.execute()?;
-        println!("After Executing statement");
         let mut result: Vec<Vec<String>> = Vec::new();
         while let Some(row) = statement.fetch()? {
             result.push(row);
         }
-        println!("Query result: {:?}", result);
         if result.is_empty() {
             Ok(None)
         } else {

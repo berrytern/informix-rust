@@ -185,7 +185,6 @@ impl ToSql for String {
                 &(self.len() as c_long) as *const c_long,
             )
         };
-        println!("SQLBindParameter result: {}", result);
         if result == SQL_SUCCESS as c_short || result == SQL_SUCCESS_WITH_INFO as c_short {
             Ok(())
         } else {
