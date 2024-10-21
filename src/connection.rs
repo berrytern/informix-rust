@@ -176,13 +176,13 @@ impl Connection {
             )));
         }
 
-        Ok(Statement::new(SendPtr::new(stmt_handle), ""))
+        Ok(Statement::new(SendPtr::new(stmt_handle)))
     }
 
     pub fn connect(&self, server: &str, user: &str, password: &str) -> Result<()> {
-        let server = CString::new(server).unwrap();
-        let user = CString::new(user).unwrap();
-        let password = CString::new(password).unwrap();
+        let server = CString::new(server)?;
+        let user = CString::new(user)?;
+        let password = CString::new(password)?;
         let result = unsafe {
             SQLConnect(
                 self.handle.as_ptr(),
@@ -238,11 +238,11 @@ impl Connection {
             return Err(InformixError::HandleAllocationError(result));
         }
 
-        let sql = CString::new(sql).unwrap();
+        let sql = CString::new(sql)?;
         let result =
             unsafe { SQLExecDirect(stmt_handle, sql.as_ptr(), sql.as_bytes().len() as c_int) };
         if result == 0 {
-            Ok(Statement::new(SendPtr::new(stmt_handle), ""))
+            Ok(Statement::new(SendPtr::new(stmt_handle)))
         } else {
             unsafe { SQLFreeHandle(3, stmt_handle) };
             Err(InformixError::SQLExecutionError(format!(
@@ -285,14 +285,12 @@ impl Drop for Connection {
 
 pub struct Statement {
     pub handle: SendPtr<c_void>,
-    query: String,
 }
 
 impl Statement {
-    pub fn new(handle: SendPtr<c_void>, query: &str) -> Self {
+    pub fn new(handle: SendPtr<c_void>) -> Self {
         Statement {
             handle,
-            query: query.into(),
         }
     }
 

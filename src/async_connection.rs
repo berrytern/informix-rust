@@ -20,33 +20,49 @@ impl AsyncConnection {
     ) -> Result<Option<Vec<Vec<String>>>, InformixError> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         let connection = self.connection.clone();
-        std::thread::spawn(move || {
-            if let Ok(conn) = connection.lock() {
+        std::thread::spawn(move || match connection.lock() {
+            Ok(conn) => {
                 let result_statement = conn.prepare(&query);
-                if let Ok(statement) = result_statement {
-                    for (index, param) in parameters.iter().enumerate() {
-                        statement.bind_parameter(index as u16 + 1, &param).unwrap();
-                    }
-                    if let Err(err) = statement.execute() {
-                        let _ = tx.send(Err(err));
-                    } else {
-                        let mut result: Vec<Vec<String>> = Vec::new();
-                        while let Some(row) = statement.fetch().unwrap() {
-                            result.push(row);
+                match result_statement {
+                    Ok(statement) => {
+                        for (index, param) in parameters.iter().enumerate() {
+                            if let Err(err) = statement.bind_parameter(index as u16 + 1, &param) {
+                                let _ = tx.send(Err(err));
+                                return;
+                            };
                         }
-                        if result.is_empty() {
-                            let _ = tx.send(Ok(None));
+                        if let Err(err) = statement.execute() {
+                            let _ = tx.send(Err(err));
                         } else {
-                            let _ = tx.send(Ok(Some(result)));
+                            let mut result: Vec<Vec<String>> = Vec::new();
+                            loop {
+                                match statement.fetch() {
+                                    Ok(Some(row)) => result.push(row),
+                                    Ok(None) => {
+                                        if result.is_empty() {
+                                            let _ = tx.send(Ok(None));
+                                        } else {
+                                            let _ = tx.send(Ok(Some(result)));
+                                        }
+                                        break;
+                                    }
+                                    Err(e) => {
+                                        let _ = tx.send(Err(e));
+                                        break;
+                                    }
+                                }
+                            }
                         }
                     }
-                } else {
-                    let _ = tx.send(Err(result_statement.err().unwrap()));
+                    Err(err) => {
+                        let _ = tx.send(Err(err));
+                    }
                 }
-            } else {
-                let _ = tx.send(Err(InformixError::ConnectionError(
-                    "Error getting connection lock".into(),
-                )));
+            }
+            Err(err) => {
+                let _ = tx.send(Err(InformixError::ConnectionError(format!(
+                    "Error getting connection lock {err}"
+                ))));
             }
         });
         match rx.await {
