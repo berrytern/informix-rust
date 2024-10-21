@@ -6,7 +6,6 @@ use crate::{connection::SendPtr, errors};
 use chrono::Datelike;
 use chrono::NaiveDate;
 use errors::InformixError;
-use std::borrow::Cow;
 use std::mem;
 use std::{
     ffi::CString,
@@ -28,17 +27,22 @@ pub struct SQL_DATE_STRUCT {
     pub month: c_ushort,
     pub day: c_ushort,
 }
+pub struct UInteger{
+    value: String,
+}
 
 #[derive(Debug, Clone)]
 pub enum SqlParam {
+    UInteger(String),
     Integer(i32),
-    Str(Cow<'static, str>),
+    Str(String),
     Date(NaiveDate),
 }
 
 impl ToSql for &SqlParam {
     fn bind_parameter(&self, stmt: SendPtr<c_void>, param_num: u16) -> Result<(), InformixError> {
         match self {
+            SqlParam::UInteger(value) => UInteger{value: value.to_string()}.bind_parameter(stmt, param_num),
             SqlParam::Integer(value) => value.bind_parameter(stmt, param_num),
             SqlParam::Str(value) => value.bind_parameter(stmt, param_num),
             SqlParam::Date(value) => value.bind_parameter(stmt, param_num),
@@ -48,6 +52,63 @@ impl ToSql for &SqlParam {
 
 pub trait ToSql {
     fn bind_parameter(&self, stmt: SendPtr<c_void>, param_num: u16) -> Result<(), InformixError>;
+}
+#[repr(C)]
+pub struct SQL_NUMERIC_STRUCT {
+    precision: u8,
+    scale: i8,
+    sign: u8,
+    val: [u8; 16],
+}
+
+impl ToSql for UInteger {
+    fn bind_parameter(&self, stmt: SendPtr<c_void>, param_num: u16) -> Result<(), InformixError> {
+        println!("Binding UInteger parameter: {}", self.value);
+        
+        // Parse the string to a u128
+        let numeric_value = self.value.parse::<u128>().map_err(|e| {
+            InformixError::ParameterBindingError(format!("Failed to parse UInteger: {}", e))
+        })?;
+
+        // Create SQL_NUMERIC_STRUCT
+        let mut numeric_struct = SQL_NUMERIC_STRUCT {
+            precision: 38, // Adjust based on your needs
+            scale: 0,      // No decimal places for this example
+            sign: 1,       // Positive number
+            val: [0; 16],  // Initialize to zero
+        };
+
+        // Convert u128 to bytes and copy to val array
+        let bytes = numeric_value.to_le_bytes();
+        numeric_struct.val[..16].copy_from_slice(&bytes);
+
+        let result = unsafe {
+            SQLBindParameter(
+                stmt.as_ptr(),
+                param_num,
+                SQL_PARAM_INPUT,
+                -2,
+                2,
+                numeric_struct.precision as c_ulong,
+                numeric_struct.scale as c_short,
+                &numeric_struct as *const SQL_NUMERIC_STRUCT as *const c_void,
+                mem::size_of::<SQL_NUMERIC_STRUCT>() as c_long,
+                std::ptr::null(),
+            )
+        };
+
+        if result != SQL_SUCCESS as c_short && result != SQL_SUCCESS_WITH_INFO as c_short {
+            let error = InformixError::ParameterBindingError(format!(
+                "Failed to bind UInteger parameter: {}",
+                result
+            ));
+            println!("Error binding UInteger parameter: {:?}", error);
+            Err(error)
+        } else {
+            println!("Successfully bound UInteger parameter");
+            Ok(())
+        }
+    }
 }
 
 impl ToSql for i32 {
@@ -107,6 +168,35 @@ impl ToSql for &str {
         }
     }
 }
+
+impl ToSql for String {
+    fn bind_parameter(&self, stmt: SendPtr<c_void>, param_num: u16) -> Result<(), InformixError> {
+        let result = unsafe {
+            SQLBindParameter(
+                stmt.as_ptr(),
+                param_num,
+                SQL_PARAM_INPUT,
+                SQL_C_CHAR,
+                SQL_VARCHAR,
+                self.len() as c_ulong,
+                0,
+                self.as_ptr() as *const c_void,
+                self.len() as c_long,
+                &(self.len() as c_long) as *const c_long,
+            )
+        };
+        println!("SQLBindParameter result: {}", result);
+        if result == SQL_SUCCESS as c_short || result == SQL_SUCCESS_WITH_INFO as c_short {
+            Ok(())
+        } else {
+            Err(InformixError::ParameterBindingError(format!(
+                "Failed to bind string parameter: {}",
+                result
+            )))
+        }
+    }
+}
+
 impl ToSql for str {
     fn bind_parameter(&self, stmt: SendPtr<c_void>, param_num: u16) -> Result<(), InformixError> {
         let c_str = CString::new(self).map_err(|e| {
@@ -134,12 +224,6 @@ impl ToSql for str {
                 result
             )))
         }
-    }
-}
-
-impl ToSql for String {
-    fn bind_parameter(&self, stmt: SendPtr<c_void>, param_num: u16) -> Result<(), InformixError> {
-        self.as_str().bind_parameter(stmt, param_num)
     }
 }
 

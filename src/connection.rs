@@ -257,15 +257,34 @@ impl Connection {
         query: String,
         parameters: Vec<SqlParam>,
     ) -> Result<Option<Vec<Vec<String>>>> {
+        println!("Executing query: {}", query);
+        println!("Parameters: {:?}", parameters);
         let statement = self.prepare(&query)?;
+
         for (index, param) in parameters.iter().enumerate() {
-            statement.bind_parameter(index as u16 + 1, &param)?;
+            match param {
+                SqlParam::Str(s) => {
+                    println!("Binding string parameter {}: {}", index + 1, s);
+                    if let Err(e) = statement.bind_parameter(index as u16 + 1, s) {
+                        println!("Error binding parameter: {:?}", e);
+                        return Err(e);
+                    }
+                },
+                other => {
+                    statement.bind_parameter(index as u16 + 1, &other)?;
+                }
+                // ... handle other parameter types ...
+            }
+            
         }
+        println!("Executing statement");
         statement.execute()?;
+        println!("After Executing statement");
         let mut result: Vec<Vec<String>> = Vec::new();
         while let Some(row) = statement.fetch()? {
             result.push(row);
         }
+        println!("Query result: {:?}", result);
         if result.is_empty() {
             Ok(None)
         } else {
@@ -301,7 +320,10 @@ impl Statement {
     pub fn execute(&self) -> Result<()> {
         let result = unsafe { SQLExecute(self.handle.as_ptr()) };
         if result != SQL_SUCCESS as c_short && result != SQL_SUCCESS_WITH_INFO as c_short {
-            Err(InformixError::SQLExecutionError(self.get_error_message()))
+            Err(InformixError::SQLExecutionError(format!(
+                "Failed to execute SQL: RESULT = {} {}",
+                result, self.get_error_message()
+            )))
         } else {
             Ok(())
         }

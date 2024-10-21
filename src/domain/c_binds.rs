@@ -39,6 +39,11 @@ extern "C" {
         StatementText: *const c_char,
         TextLength: c_int,
     ) -> c_int;
+    pub fn SQLPutData(
+        StatementHandle: *mut c_void,
+        Data: *const c_void,
+        StrLen_or_Ind: c_long,
+    ) -> c_short;
     pub fn SQLFetch(StatementHandle: *mut c_void) -> c_int;
     pub fn SQLGetData(
         StatementHandle: *mut c_void,

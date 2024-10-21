@@ -16,6 +16,7 @@ fn main() {
     println!("cargo:rustc-link-search=native={}", cli_path.display());
 
     // Link the required Informix dynamic libraries
+    println!("cargo:rustc-link-lib=dylib=ifgen");
     println!("cargo:rustc-link-lib=dylib=ifcli");
     println!("cargo:rustc-link-lib=dylib=ifdmr");
     println!("cargo:rustc-link-lib=dylib=ifos");
